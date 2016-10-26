@@ -25,8 +25,8 @@ findModuleName src = fromMaybe "Lib" (group 1 =<< find reModuleName src)
     reModuleName = regex [Multiline] "^module\\s+(\\S+)\\s+where"
 
 
-callAgdaToHTML :: Maybe FilePath -> T.Text -> IO T.Text
-callAgdaToHTML inputFile src = do
+callAgdaToHTML :: Bool -> Maybe FilePath -> T.Text -> IO T.Text
+callAgdaToHTML v inputFile src = do
   withSystemTempDirectory "agda2html" $ \tempDir -> do
 
     -- Prepare calling agda --html:
@@ -58,8 +58,8 @@ callAgdaToHTML inputFile src = do
                     ,inputFile'])
         { cwd     = Just tempDir
         , std_in  = NoStream
-        , std_out = CreatePipe
-        , std_err = CreatePipe })
+        , std_out = if v then UseHandle stderr else CreatePipe
+        , std_err = if v then UseHandle stderr else CreatePipe })
 
     -- If agda does not fail:
     exitCode <- waitForProcess pid

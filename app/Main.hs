@@ -16,6 +16,7 @@ data Options = Options
   { optInputAgda         :: Either FilePath (IO T.Text)
   , optInputHTML         :: Maybe (IO T.Text)
   , optOutputFile        :: T.Text -> IO ()
+  , optVerbose           :: Bool
   , optStripImplicitArgs :: T.Text -> T.Text
   , optLinkToAgdaStdlib  :: T.Text -> T.Text
   }
@@ -25,6 +26,7 @@ defaultOptions = Options
   { optInputAgda         = Right T.getContents
   , optInputHTML         = Nothing
   , optOutputFile        = T.putStrLn
+  , optVerbose           = False
   , optStripImplicitArgs = id
   , optLinkToAgdaStdlib  = id
   }
@@ -44,6 +46,9 @@ options =
                 return opt { optOutputFile = T.writeFile arg })
             "FILE")
     "Output file (optional)"
+  , Option "v" ["verbose"]
+    (NoArg (\opt -> return opt { optVerbose = True }))
+    "Verbose output"
   , Option [] ["strip-implicit-args"]
     (NoArg (\opt -> do
                return opt { optStripImplicitArgs = Lib.removeImplicit }))
@@ -75,13 +80,14 @@ main = do
   let Options { optInputAgda         = istreamAgda'
               , optInputHTML         = istreamHTML
               , optOutputFile        = ostream
+              , optVerbose           = v
               , optStripImplicitArgs = stripImplicitArgs
               , optLinkToAgdaStdlib  = linkToAgdaStdlib
               } = opts
 
   let (istreamAgda,fn) = readInput istreamAgda'
   srcAgda <- istreamAgda
-  srcHTML <- fromMaybe (Lib.callAgdaToHTML fn srcAgda) istreamHTML
+  srcHTML <- fromMaybe (Lib.callAgdaToHTML v fn srcAgda) istreamHTML
 
   let
     blText = Lib.text srcAgda
