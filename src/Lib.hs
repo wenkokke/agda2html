@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Lib where
 
-import Control.Monad (forM_)
+import Control.Monad (forM_,when)
 import qualified Data.Foldable as F
 import Data.Maybe (fromMaybe)
 import qualified Data.List as L
@@ -58,11 +58,15 @@ callAgdaToHTML v inputFile src = do
                     ,inputFile'])
         { cwd     = Just tempDir
         , std_in  = NoStream
-        , std_out = if v then UseHandle stderr else CreatePipe
-        , std_err = if v then UseHandle stderr else CreatePipe })
+        , std_out = CreatePipe
+        , std_err = CreatePipe })
 
     -- If agda does not fail:
     exitCode <- waitForProcess pid
+    when v $ do
+      out <- T.hGetContents hout
+      err <- T.hGetContents herr
+      T.hPutStrLn stderr (T.append out err)
     case exitCode of
       ExitSuccess   -> T.readFile outputFile
       ExitFailure e -> do
