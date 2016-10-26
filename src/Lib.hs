@@ -110,8 +110,8 @@ code = enter
              | otherwise =
                let (x0,t1) = T.breakOn    "\\end{code}" t0
                    (x1,_ ) = T.breakOnEnd "<a"          x0
-                   (_ ,t2) = T.breakOn    "</a"         t1
-                   (_ ,t3) = T.breakOn    ">"           t2
+                   (t2,t3) = T.breakOn    "</a"         t1
+                   (_ ,t4) = T.breakOn    ">"           t3
                    blCode  = T.dropEnd 2 x1
                    blCode' =
                      if T.null (T.strip blCode)
@@ -119,7 +119,11 @@ code = enter
                      else T.unlines ["<pre class=\"Agda\">{% raw %}"
                                     ,blCode
                                     ,"{% endraw %}</pre>"]
-               in  blCode' : enter (T.drop 1 t3)
+               in  blCode' :
+                   -- immediately re-entering a code-block is possible
+                   if T.isInfixOf "\\begin{code}" t2
+                   then leave (T.drop 1 t4)
+                   else enter (T.drop 1 t4)
 
 
 -- |Correct references to the Agda stdlib.
