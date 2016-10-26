@@ -1,0 +1,12 @@
+resolver: lts-7.2
+packages:
+  - '.'
+pvp-bounds: upper
+extra-deps:
+  - 'text-regex-replace-0.1.1.1'
+extra-include-dirs:
+  - '/usr/local/opt/icu4c/include'
+extra-lib-dirs:
+  - '/usr/local/opt/icu4c/lib'
+flags: {}
+extra-package-dbs: []
