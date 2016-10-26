@@ -50,7 +50,9 @@ callAgdaToHTML v inputFile src = do
         }
 
     -- Call agda --html:
-    (_, Just hout, Just herr, pid) <-
+    let std_opt = if v then UseHandle stderr else CreatePipe
+
+    (_, hout, herr, pid) <-
       createProcess_ "agda"
       ((proc "agda" ["--allow-unsolved-metas"
                     ,"--html"
@@ -58,20 +60,18 @@ callAgdaToHTML v inputFile src = do
                     ,inputFile'])
         { cwd     = Just tempDir
         , std_in  = NoStream
-        , std_out = CreatePipe
-        , std_err = CreatePipe })
+        , std_out = std_opt
+        , std_err = std_opt })
 
     -- If agda does not fail:
     exitCode <- waitForProcess pid
-    when v $ do
-      out <- T.hGetContents hout
-      err <- T.hGetContents herr
-      T.hPutStrLn stderr (T.append out err)
     case exitCode of
       ExitSuccess   -> T.readFile outputFile
       ExitFailure e -> do
-        out <- T.hGetContents hout
-        err <- T.hGetContents herr
+        let (Just hout') = hout
+            (Just herr') = herr
+        out <- T.hGetContents hout'
+        err <- T.hGetContents herr'
         T.hPutStrLn stderr (T.append out err)
         exitWith (ExitFailure e)
 
