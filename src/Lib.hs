@@ -156,15 +156,16 @@ reStdlibHref :: IO Regex
 reStdlibHref = do
   modNames <- map T.pack <$> stdlibModules
   let
+    builtin  = "Agda\\.Builtin\\.[A-Za-z]+"
     modPatns = T.replace "." "\\." <$> modNames
-    modPatn  = T.concat . L.intersperse "|" $ modPatns
+    modPatn  = T.concat . L.intersperse "|" $ builtin : modPatns
     refPatn  = "(" `T.append` modPatn `T.append` ")\\.html"
   return (regex [] refPatn)
 
 
 -- |A url pointing to the GitHub repository of the Agda stdlib.
 stdlibUrl :: String
-stdlibUrl = "git@github.com:agda/agda-stdlib.git"
+stdlibUrl = "https://github.com/agda/agda-stdlib.git"
 
 
 -- |Generate a list of the Agda stdlib modules.
