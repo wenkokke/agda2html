@@ -19,6 +19,7 @@ data Options = Options
   , optVerbose           :: Bool
   , optStripImplicitArgs :: T.Text -> T.Text
   , optLinkToAgdaStdlib  :: T.Text -> T.Text
+  , optJekyll            :: Bool
   }
 
 defaultOptions :: Options
@@ -29,6 +30,7 @@ defaultOptions = Options
   , optVerbose           = False
   , optStripImplicitArgs = id
   , optLinkToAgdaStdlib  = id
+  , optJekyll            = False
   }
 
 options :: [ OptDescr (Options -> IO Options) ]
@@ -58,6 +60,9 @@ options =
                f <- Lib.correctStdLibHref
                return opt { optLinkToAgdaStdlib = f }))
     "Fix links to the Agda stdlib"
+  , Option [] ["jekyll"]
+    (NoArg (\opt -> return opt { optJekyll = True }))
+    "Fix links to Jekyll posts and wrap code in {% raw %} tags."
   , Option [] ["help"]
     (NoArg  (\_ -> do
                prg <- getProgName
@@ -83,15 +88,16 @@ main = do
               , optVerbose           = v
               , optStripImplicitArgs = stripImplicitArgs
               , optLinkToAgdaStdlib  = linkToAgdaStdlib
+              , optJekyll            = j
               } = opts
 
   let (istreamAgda,fn) = readInput istreamAgda'
   srcAgda <- istreamAgda
-  srcHTML <- fromMaybe (Lib.callAgdaToHTML v fn srcAgda) istreamHTML
+  srcHTML <- fromMaybe (Lib.callAgdaToHTML v j fn srcAgda) istreamHTML
 
   let
     blText = Lib.text srcAgda
-    blCode = map (linkToAgdaStdlib . stripImplicitArgs) (Lib.code srcHTML)
+    blCode = map (linkToAgdaStdlib . stripImplicitArgs) (Lib.code j srcHTML)
 
     merge    []  ys = ys
     merge (x:xs) ys = x : merge ys xs

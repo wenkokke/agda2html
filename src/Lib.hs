@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Lib where
 
-import Control.Monad (forM_,when)
+import Control.Monad (forM)
 import qualified Data.Foldable as F
 import Data.Maybe (fromMaybe)
 import qualified Data.List as L
@@ -17,7 +17,6 @@ import System.Exit (ExitCode(..),exitWith)
 import System.FilePath
 import System.Process (StdStream(..),CreateProcess(..),createProcess_,callProcess,proc,waitForProcess)
 
-
 findModuleName :: T.Text -> T.Text
 findModuleName src = fromMaybe "Lib" (group 1 =<< find reModuleName src)
   where
@@ -25,28 +24,29 @@ findModuleName src = fromMaybe "Lib" (group 1 =<< find reModuleName src)
     reModuleName = regex [Multiline] "^module\\s+(\\S+)\\s+where"
 
 
-callAgdaToHTML :: Bool -> Maybe FilePath -> T.Text -> IO T.Text
-callAgdaToHTML v inputFile src = do
+callAgdaToHTML :: Bool -> Bool -> Maybe FilePath -> T.Text -> IO T.Text
+callAgdaToHTML v jekyll inputFile src = do
   withSystemTempDirectory "agda2html" $ \tempDir -> do
 
     -- Prepare calling agda --html:
-    (inputFile',outputFile) <-
+    (inputFile',outputFile,agdaFiles) <-
       case inputFile of
         { Nothing -> do
             let moduleName = T.unpack (findModuleName src)
                 inputFile' = tempDir </> moduleName <.> "lagda"
                 outputFile = tempDir </> moduleName <.> "html"
             T.writeFile inputFile' src
-            return (inputFile',outputFile)
+            return (inputFile',outputFile,[])
         ; Just inputFile' -> do
             let (dir,fn)    = splitFileName inputFile'
                 inputFile'' = tempDir </> fn
                 outputFile  = tempDir </> "html" </> fn -<.> "html"
             agdaFiles <- agdaFilesIn dir
-            forM_ agdaFiles $ \source -> do
+            agdaFiles' <- forM agdaFiles $ \source -> do
               let target = tempDir </> takeFileName source
               copyFile source target
-            return (inputFile'',outputFile)
+              return target
+            return (inputFile'',outputFile,agdaFiles')
         }
 
     -- Call agda --html:
@@ -66,7 +66,11 @@ callAgdaToHTML v inputFile src = do
     -- If agda does not fail:
     exitCode <- waitForProcess pid
     case exitCode of
-      ExitSuccess   -> T.readFile outputFile
+      ExitSuccess   -> do
+        srcHTML <- T.readFile outputFile
+        if jekyll
+          then return $ liquidifyLocalHref agdaFiles srcHTML
+          else return $ srcHTML
       ExitFailure e -> do
         let (Just hout') = hout
             (Just herr') = herr
@@ -93,9 +97,15 @@ text = enter
                in  enter (T.drop 1 t1)
 
 
-code :: T.Text -> [T.Text]
-code = enter
+code :: Bool -> T.Text -> [T.Text]
+code jekyll = enter
   where
+    rawOpen
+      | jekyll    = "{% raw %}"
+      | otherwise = ""
+    rawClose
+      | jekyll    = "{% endraw %}"
+      | otherwise = ""
     enter :: T.Text -> [T.Text]
     enter t0 | T.null t0 = []
              | otherwise =
@@ -116,14 +126,28 @@ code = enter
                    blCode' =
                      if T.null (T.strip blCode)
                      then T.empty
-                     else T.unlines ["<pre class=\"Agda\">{% raw %}"
+                     else T.unlines ["<pre class=\"Agda\">",rawOpen
                                     ,blCode
-                                    ,"{% endraw %}</pre>"]
+                                    ,rawClose,"</pre>"]
                in  blCode' :
                    -- immediately re-entering a code-block is possible
                    if T.isInfixOf "\\begin{code}" t2
                    then leave (T.drop 1 t4)
                    else enter (T.drop 1 t4)
+
+
+-- |Correct references to local files.
+liquidifyLocalHref :: [FilePath] -> T.Text -> T.Text
+liquidifyLocalHref paths =
+  replaceAll (reLocal paths) "{% endraw %}{% post_url $1 %}{% raw %}$2"
+
+
+-- |An ICU regular expression which matches links to local files.
+reLocal :: [FilePath] -> Regex
+reLocal paths = regex [] refPatn
+  where
+    filPatn = T.concat . L.intersperse "|" . map (T.pack . takeBaseName) $ paths
+    refPatn = "(" `T.append` filPatn `T.append` ")\\.html(#[^\"]+)?"
 
 
 -- |Correct references to the Agda stdlib.
@@ -141,13 +165,15 @@ removeImplicit = replaceAll reImplicit ""
 -- |An ICU regular expression which matches implicit parameters in Agda HTMl.
 reImplicit :: Regex
 reImplicit = regex [DotAll] $ T.concat
-  ["((<a[^>]*>\\s*∀\\s*<\\/a[^>]*>)(<a[^>]*>\\s*<\\/a[^>]*>)*)?"
-  ,"<a[^>]*>\\s*\\{\\s*<\\/a[^>]*>"
-  ,"(<a[^>]*>[^=\\}]*<\\/a[^>]*>)*"
-  ,"<a[^>]*>\\s*\\}\\s*<\\/a[^>]*>"
-  ,"((<a[^>]*>\\s*<\\/a[^>]*>)*(<a[^>]*>\\s*→\\s*<\\/a[^>]*>))?"
-  ,"(<a[^>]*>\\s*<\\/a[^>]*>)*"]
-
+  ["((<a[^>]*>\\s*",reForall,"\\s*<\\/a[^>]*>)\\s*(<a[^>]*>\\s*<\\/a[^>]*>)*\\s*)?"
+  ,"<a[^>]*>\\s*\\{\\s*<\\/a[^>]*>\\s*"
+  ,"(<a[^>]*>[^=\\}]*<\\/a[^>]*>)*\\s*"
+  ,"<a[^>]*>\\s*\\}\\s*<\\/a[^>]*>\\s*"
+  ,"((<a[^>]*>\\s*<\\/a[^>]*>)*\\s*(<a[^>]*>\\s*",reRightArrow,"\\s*<\\/a[^>]*>)\\s*)?"
+  ,"(<a[^>]*>\\s*<\\/a[^>]*>)*\\s*"]
+  where
+    reForall = "(∀|&#8704;|&#x2200;|&forall;)"
+    reRightArrow = "(→|&#8594;|&#x2192;|&rarr;)"
 
 
 
