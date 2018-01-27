@@ -2,7 +2,7 @@
 module Main where
 
 import qualified Lib
-import           Data.Maybe (fromMaybe)
+import           Data.Maybe (fromMaybe,isJust)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import           System.Console.GetOpt (OptDescr(..),ArgDescr(..),ArgOrder(..),usageInfo,getOpt)
@@ -19,7 +19,7 @@ data Options = Options
   , optVerbose           :: Bool
   , optStripImplicitArgs :: T.Text -> T.Text
   , optLinkToAgdaStdlib  :: T.Text -> T.Text
-  , optJekyll            :: Bool
+  , optJekyllRoot        :: Maybe FilePath
   }
 
 defaultOptions :: Options
@@ -30,7 +30,7 @@ defaultOptions = Options
   , optVerbose           = False
   , optStripImplicitArgs = id
   , optLinkToAgdaStdlib  = id
-  , optJekyll            = False
+  , optJekyllRoot        = Nothing
   }
 
 options :: [ OptDescr (Options -> IO Options) ]
@@ -44,24 +44,23 @@ options =
             "FILE")
     "Input HTML file (optional)"
   , Option "o" ["output"]
-    (ReqArg (\arg opt -> do
-                return opt { optOutputFile = T.writeFile arg })
+    (ReqArg (\arg opt -> return opt { optOutputFile = T.writeFile arg })
             "FILE")
     "Output file (optional)"
   , Option "v" ["verbose"]
     (NoArg (\opt -> return opt { optVerbose = True }))
     "Verbose output"
   , Option [] ["strip-implicit-args"]
-    (NoArg (\opt -> do
-               return opt { optStripImplicitArgs = Lib.removeImplicit }))
+    (NoArg (\opt -> return opt { optStripImplicitArgs = Lib.removeImplicit }))
     "Strip implicit arguments"
   , Option [] ["link-to-agda-stdlib"]
     (NoArg (\opt -> do
                f <- Lib.correctStdLibHref
                return opt { optLinkToAgdaStdlib = f }))
     "Fix links to the Agda stdlib"
-  , Option [] ["jekyll"]
-    (NoArg (\opt -> return opt { optJekyll = True }))
+  , Option [] ["jekyll-root"]
+    (ReqArg (\arg opt -> return opt { optJekyllRoot = Just arg })
+            "FILE")
     "Fix links to Jekyll posts and wrap code in {% raw %} tags."
   , Option [] ["help"]
     (NoArg  (\_ -> do
@@ -88,7 +87,7 @@ main = do
               , optVerbose           = v
               , optStripImplicitArgs = stripImplicitArgs
               , optLinkToAgdaStdlib  = linkToAgdaStdlib
-              , optJekyll            = j
+              , optJekyllRoot        = j
               } = opts
 
   let (istreamAgda,fn) = readInput istreamAgda'
@@ -97,7 +96,7 @@ main = do
 
   let
     blText = Lib.text srcAgda
-    blCode = map (linkToAgdaStdlib . stripImplicitArgs) (Lib.code j srcHTML)
+    blCode = map (linkToAgdaStdlib . stripImplicitArgs) (Lib.code (isJust j) srcHTML)
 
     merge    []  ys = ys
     merge (x:xs) ys = x : merge ys xs

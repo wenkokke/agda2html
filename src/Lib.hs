@@ -4,12 +4,14 @@ module Lib where
 import Control.Monad (forM)
 import qualified Data.Foldable as F
 import Data.Function ((&))
-import Data.Maybe (fromMaybe)
+import Data.String (fromString)
+import Data.Maybe (fromMaybe,fromJust,isJust)
+import Data.Monoid ((<>))
 import qualified Data.List as L
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import Data.Text.ICU (Regex,MatchOption(..),regex,find,group)
-import Data.Text.ICU.Replace (replaceAll)
+import Data.Text.ICU.Replace (replaceAll,rstring)
 import System.Directory (copyFile)
 import System.Directory.Tree (AnchoredDirTree(..),readDirectoryWith)
 import System.IO (stderr)
@@ -25,8 +27,8 @@ findModuleName src = fromMaybe "Lib" (group 1 =<< find reModuleName src)
     reModuleName = regex [Multiline] "^module\\s+(\\S+)\\s+where"
 
 
-callAgdaToHTML :: Bool -> Bool -> Maybe FilePath -> T.Text -> IO T.Text
-callAgdaToHTML v jekyll inputFile src = do
+callAgdaToHTML :: Bool -> Maybe FilePath -> Maybe FilePath -> T.Text -> IO T.Text
+callAgdaToHTML v jekyllRoot inputFile src = do
   withSystemTempDirectory "agda2html" $ \tempDir -> do
 
     -- Prepare calling agda --html:
@@ -69,8 +71,8 @@ callAgdaToHTML v jekyll inputFile src = do
     case exitCode of
       ExitSuccess   -> do
         srcHTML <- T.readFile outputFile
-        if jekyll
-          then return $ liquidifyLocalHref agdaFiles srcHTML
+        if isJust jekyllRoot
+          then return $ liquidifyLocalHref (fromJust jekyllRoot) agdaFiles srcHTML
           else return $ srcHTML
       ExitFailure e -> do
         let (Just hout') = hout
@@ -132,20 +134,21 @@ code jekyll = enter
                  c2 = T.strip c1
                  c3 = if T.null c2
                       then T.empty
-                      else T.unlines [preOpen,rawOpen,c2,rawClose,preClose]
+                      else T.concat [preOpen,rawOpen,c2,rawClose,preClose]
 
 -- |Correct references to local files.
-liquidifyLocalHref :: [FilePath] -> T.Text -> T.Text
-liquidifyLocalHref paths =
-  replaceAll (reLocal paths) "{% endraw %}{% post_url $1 %}{% raw %}$2"
+liquidifyLocalHref :: FilePath -> [FilePath] -> T.Text -> T.Text
+liquidifyLocalHref jekyllRoot paths =
+  replaceAll (reLocal paths) . fromString $
+    "{% endraw %}{% link " <> jekyllRoot <> "$1.md %}{% raw %}$2"
 
 
 -- |An ICU regular expression which matches links to local files.
 reLocal :: [FilePath] -> Regex
-reLocal paths = regex [] refPatn
+reLocal paths = regex [] refrPatn
   where
-    filPatn = T.concat . L.intersperse "|" . map (T.pack . takeBaseName) $ paths
-    refPatn = "(" `T.append` filPatn `T.append` ")\\.html(#[^\"]+)?"
+    filePatn = T.concat . L.intersperse "|" . map (T.pack . takeBaseName) $ paths
+    refrPatn = "(" `T.append` filePatn `T.append` ")\\.html(#[^\"]+)?"
 
 
 -- |Correct references to the Agda stdlib.
