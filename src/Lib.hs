@@ -3,6 +3,7 @@ module Lib where
 
 import Control.Monad (forM)
 import qualified Data.Foldable as F
+import Data.Function ((&))
 import Data.Maybe (fromMaybe)
 import qualified Data.List as L
 import qualified Data.Text as T
@@ -79,6 +80,11 @@ callAgdaToHTML v jekyll inputFile src = do
         T.hPutStrLn stderr (T.append out err)
         exitWith (ExitFailure e)
 
+preOpen, preClose, codeOpen, codeClose :: T.Text
+preOpen   = "<pre class=\"Agda\">"
+preClose  = "</pre>"
+codeOpen  = "\\begin{code}"
+codeClose = "\\end{code}"
 
 text :: T.Text -> [T.Text]
 text = enter
@@ -86,15 +92,17 @@ text = enter
     enter :: T.Text -> [T.Text]
     enter t0 | T.null t0 = []
              | otherwise =
-               let (t1,x0) = T.breakOn "\\begin{code}" t0
-               in  t1 : leave x0
+               let (t1,c1) = T.breakOn codeOpen t0
+                   c2 = T.drop (T.length codeOpen) c1
+               in  t1 : leave c2
 
     leave :: T.Text -> [T.Text]
-    leave x0 | T.null x0 = []
-             | otherwise =
-               let (x1,t0) = T.breakOn "\\end{code}" x0
-                   (_ ,t1) = T.breakOn "\n"          t0
-               in  enter (T.drop 1 t1)
+    leave c0 | T.null c0 = []
+             | otherwise = c0
+                         & T.breakOn codeClose
+                         & snd
+                         & T.drop (T.length codeClose)
+                         & enter
 
 
 code :: Bool -> T.Text -> [T.Text]
@@ -106,35 +114,25 @@ code jekyll = enter
     rawClose
       | jekyll    = "{% endraw %}"
       | otherwise = ""
+
     enter :: T.Text -> [T.Text]
     enter t0 | T.null t0 = []
-             | otherwise =
-               let (_ ,t1) = T.breakOn    "\\begin{code}" t0
-                   (w0,x0) = T.breakOn    "</a"           t1
-                   (_ ,w1) = T.breakOnEnd "\n"            w0
-                   (_ ,x1) = T.breakOn    ">"             x0
-               in  leave (T.append w1 (T.drop 1 x1))
+             | otherwise = t0
+                         & T.breakOn codeOpen
+                         & snd
+                         & T.drop (T.length codeOpen)
+                         & leave
 
     leave :: T.Text -> [T.Text]
     leave t0 | T.null t0 = []
-             | otherwise =
-               let (x0,t1) = T.breakOn    "\\end{code}" t0
-                   (x1,_ ) = T.breakOnEnd "<a"          x0
-                   (t2,t3) = T.breakOn    "</a"         t1
-                   (_ ,t4) = T.breakOn    ">"           t3
-                   blCode  = T.dropEnd 2 x1
-                   blCode' =
-                     if T.null (T.strip blCode)
-                     then T.empty
-                     else T.unlines ["<pre class=\"Agda\">",rawOpen
-                                    ,blCode
-                                    ,rawClose,"</pre>"]
-               in  blCode' :
-                   -- immediately re-entering a code-block is possible
-                   if T.isInfixOf "\\begin{code}" t2
-                   then leave (T.drop 1 t4)
-                   else enter (T.drop 1 t4)
-
+             | otherwise = c3 : enter t2
+               where
+                 (c1,t1) = T.breakOn codeClose t0
+                 t2 = T.drop (T.length codeClose) t1
+                 c2 = T.strip c1
+                 c3 = if T.null c2
+                      then T.empty
+                      else T.unlines [preOpen,rawOpen,c2,rawClose,preClose]
 
 -- |Correct references to local files.
 liquidifyLocalHref :: [FilePath] -> T.Text -> T.Text
