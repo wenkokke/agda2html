@@ -183,10 +183,10 @@ reStdlibHref :: IO Regex
 reStdlibHref = do
   modNames <- map T.pack <$> stdlibModules
   let
-    builtin  = "Agda\\.Builtin\\.[A-Za-z]+"
-    modPatns = T.replace "." "\\." <$> modNames
-    modPatn  = T.concat . L.intersperse "|" $ builtin : modPatns
-    refPatn  = "[\"'](" `T.append` modPatn `T.append` ")\\.html(#[^\"^']+)?[\"']"
+    builtin   = "Agda(\\.[A-Za-z]+)*"
+    modPatns  = T.replace "." "\\." <$> modNames
+    modPatn   = T.concat . L.intersperse "|" $ builtin : modPatns
+    refPatn   = "[\"'](" `T.append` modPatn `T.append` ")\\.html(#[^\"^']+)?[\"']"
   return (regex [] refPatn)
 
 
