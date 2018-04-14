@@ -11,14 +11,23 @@ import qualified Data.List as L
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import Data.Text.ICU (Regex,MatchOption(..),regex,find,group)
-import Data.Text.ICU.Replace (replaceAll,rstring)
+import Data.Text.ICU.Replace (replaceAll)
 import System.Directory (copyFile)
 import System.Directory.Tree (AnchoredDirTree(..),readDirectoryWith)
 import System.IO (stderr)
 import System.IO.Temp (withSystemTempDirectory)
 import System.Exit (ExitCode(..),exitWith)
 import System.FilePath
-import System.Process (StdStream(..),CreateProcess(..),createProcess_,callProcess,proc,waitForProcess)
+import System.Process (StdStream(..),CreateProcess(..),
+                       createProcess_,callProcess,proc,waitForProcess)
+
+-- Workflow:
+--
+-- * check if either GitHub repository or the library name is set
+-- * if the GitHub token is set, and the library name is not, check if the repository contains an *.agda-lib file, and if it is available locally
+-- * if the GitHub repository is set, and the library is not available locally, clone the repository to a temporary place
+-- * collect all module names in the library
+-- * if the GitHub repository is set, and the URL template is not, use the default URL template which links to the file on GitHub
 
 findModuleName :: T.Text -> T.Text
 findModuleName src = fromMaybe "Lib" (group 1 =<< find reModuleName src)
@@ -27,7 +36,8 @@ findModuleName src = fromMaybe "Lib" (group 1 =<< find reModuleName src)
     reModuleName = regex [Multiline] "^module\\s+(\\S+)\\s+where"
 
 
-callAgdaToHTML :: Bool -> Maybe FilePath -> Maybe FilePath -> T.Text -> IO T.Text
+callAgdaToHTML ::
+  Bool -> Maybe FilePath -> Maybe FilePath -> T.Text -> IO T.Text
 callAgdaToHTML v jekyllRoot inputFile src = do
   withSystemTempDirectory "agda2html" $ \tempDir -> do
 
@@ -140,7 +150,7 @@ code jekyll = enter
 liquidifyLocalHref :: FilePath -> [FilePath] -> T.Text -> T.Text
 liquidifyLocalHref jekyllRoot paths =
   replaceAll (reLocal paths) . fromString $
-    "{% endraw %}{% link " <> jekyllRoot <> "$1.md %}{% raw %}$2"
+    "{% endraw %}{{ site.baseurl }}{% link " <> jekyllRoot <> "$1.md %}{% raw %}$2"
 
 
 -- |An ICU regular expression which matches links to local files.
