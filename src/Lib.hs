@@ -140,7 +140,7 @@ code jekyll = enter
 liquidifyLocalHref :: FilePath -> [FilePath] -> T.Text -> T.Text
 liquidifyLocalHref jekyllRoot paths =
   replaceAll (reLocal paths) . fromString $
-    "{% endraw %}{% link " <> jekyllRoot <> "$1.md %}{% raw %}$2"
+    "\"{% endraw %}{% link " <> jekyllRoot <> "$1.md %}{% raw %}$2\""
 
 
 -- |An ICU regular expression which matches links to local files.
@@ -148,14 +148,14 @@ reLocal :: [FilePath] -> Regex
 reLocal paths = regex [] refrPatn
   where
     filePatn = T.concat . L.intersperse "|" . map (T.pack . takeBaseName) $ paths
-    refrPatn = "(" `T.append` filePatn `T.append` ")\\.html(#[^\"]+)?"
+    refrPatn = "[\"'](" `T.append` filePatn `T.append` ")\\.html(#[^\"^']+)?[\"']"
 
 
 -- |Correct references to the Agda stdlib.
 correctStdLibHref :: IO (T.Text -> T.Text)
 correctStdLibHref =
   reStdlibHref >>= \re ->
-  return (replaceAll re "https://agda.github.io/agda-stdlib/$1.html")
+  return (replaceAll re "\"https://agda.github.io/agda-stdlib/$1.html\"")
 
 
 -- |Remove implicit arguments from Agda HTML.
@@ -186,7 +186,7 @@ reStdlibHref = do
     builtin  = "Agda\\.Builtin\\.[A-Za-z]+"
     modPatns = T.replace "." "\\." <$> modNames
     modPatn  = T.concat . L.intersperse "|" $ builtin : modPatns
-    refPatn  = "(" `T.append` modPatn `T.append` ")\\.html"
+    refPatn  = "[\"'](" `T.append` modPatn `T.append` ")\\.html(#[^\"^']+)?[\"']"
   return (regex [] refPatn)
 
 
