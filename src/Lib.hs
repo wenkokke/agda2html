@@ -145,37 +145,17 @@ liquidifyLocalHref jekyllRoot paths =
 
 -- |An ICU regular expression which matches links to local files.
 reLocal :: [FilePath] -> Regex
-reLocal paths = regex [] refrPatn
+reLocal paths = regex [] hrefPatn
   where
     filePatn = T.concat . L.intersperse "|" . map (T.pack . takeBaseName) $ paths
-    refrPatn = "[\"'](" `T.append` filePatn `T.append` ")\\.html(#[^\"^']+)?[\"']"
+    hrefPatn = "[\"'](" `T.append` filePatn `T.append` ")\\.html(#[^\"^']+)?[\"']"
 
 
 -- |Correct references to the Agda stdlib.
 correctStdLibHref :: IO (T.Text -> T.Text)
 correctStdLibHref =
   reStdlibHref >>= \re ->
-  return (replaceAll re "\"https://agda.github.io/agda-stdlib/$1.html\"")
-
-
--- |Remove implicit arguments from Agda HTML.
-removeImplicit :: T.Text -> T.Text
-removeImplicit = replaceAll reImplicit ""
-
-
--- |An ICU regular expression which matches implicit parameters in Agda HTMl.
-reImplicit :: Regex
-reImplicit = regex [DotAll] $ T.concat
-  ["((<a[^>]*>\\s*",reForall,"\\s*<\\/a[^>]*>)\\s*(<a[^>]*>\\s*<\\/a[^>]*>)*\\s*)?"
-  ,"<a[^>]*>\\s*\\{\\s*<\\/a[^>]*>\\s*"
-  ,"(<a[^>]*>[^=\\}]*<\\/a[^>]*>)*\\s*"
-  ,"<a[^>]*>\\s*\\}\\s*<\\/a[^>]*>\\s*"
-  ,"((<a[^>]*>\\s*<\\/a[^>]*>)*\\s*(<a[^>]*>\\s*",reRightArrow,"\\s*<\\/a[^>]*>)\\s*)?"
-  ,"(<a[^>]*>\\s*<\\/a[^>]*>)*\\s*"]
-  where
-    reForall = "(∀|&#8704;|&#x2200;|&forall;)"
-    reRightArrow = "(→|&#8594;|&#x2192;|&rarr;)"
-
+  return (replaceAll re "\"https://agda.github.io/agda-stdlib/$1.html$2\"")
 
 
 -- |An ICU regular expression which matches links to the Agda stdlib.
@@ -183,11 +163,11 @@ reStdlibHref :: IO Regex
 reStdlibHref = do
   modNames <- map T.pack <$> stdlibModules
   let
-    builtin   = "Agda(\\.[A-Za-z]+)*"
+    builtin   = "Agda\\.[A-Za-z\\.]+"
     modPatns  = T.replace "." "\\." <$> modNames
     modPatn   = T.concat . L.intersperse "|" $ builtin : modPatns
-    refPatn   = "[\"'](" `T.append` modPatn `T.append` ")\\.html(#[^\"^']+)?[\"']"
-  return (regex [] refPatn)
+    hrefPatn  = "[\"'](" `T.append` modPatn `T.append` ")\\.html(#[^\"^']+)?[\"']"
+  return (regex [] hrefPatn)
 
 
 -- |A url pointing to the GitHub repository of the Agda stdlib.
@@ -225,3 +205,24 @@ agdaFilesIn dir = do
     isAgdaSrc :: FilePath -> Bool
     isAgdaSrc = (`elem`[".agda",".lagda"]) . takeExtension
   return $ filter isAgdaSrc (F.toList tree)
+
+
+-- |Remove implicit arguments from Agda HTML.
+removeImplicit :: T.Text -> T.Text
+removeImplicit = replaceAll reImplicit ""
+
+
+-- |An ICU regular expression which matches implicit parameters in Agda HTMl.
+reImplicit :: Regex
+reImplicit = regex [DotAll] $ T.concat
+  ["((<a[^>]*>\\s*",reForall,"\\s*<\\/a[^>]*>)\\s*(<a[^>]*>\\s*<\\/a[^>]*>)*\\s*)?"
+  ,"<a[^>]*>\\s*\\{\\s*<\\/a[^>]*>\\s*"
+  ,"(<a[^>]*>[^=\\}]*<\\/a[^>]*>)*\\s*"
+  ,"<a[^>]*>\\s*\\}\\s*<\\/a[^>]*>\\s*"
+  ,"((<a[^>]*>\\s*<\\/a[^>]*>)*\\s*(<a[^>]*>\\s*",reRightArrow,"\\s*<\\/a[^>]*>)\\s*)?"
+  ,"(<a[^>]*>\\s*<\\/a[^>]*>)*\\s*"]
+  where
+    reForall = "(∀|&#8704;|&#x2200;|&forall;)"
+    reRightArrow = "(→|&#8594;|&#x2192;|&rarr;)"
+
+
