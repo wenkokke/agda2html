@@ -140,7 +140,7 @@ code jekyll = enter
 liquidifyLocalHref :: FilePath -> [FilePath] -> T.Text -> T.Text
 liquidifyLocalHref jekyllRoot paths =
   replaceAll (reLocal paths) . fromString $
-    "\"{% endraw %}{% link " <> jekyllRoot <> "$1.md %}{% raw %}$2\""
+    "\"{% endraw %}{{ site.baseurl }}{% link " <> jekyllRoot <> "$1.md %}{% raw %}$2\""
 
 
 -- |An ICU regular expression which matches links to local files.
