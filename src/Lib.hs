@@ -32,7 +32,7 @@ makeAbsolute path
   | otherwise       = do
       currentDirectory <- getCurrentDirectory
       canonicalizePath (currentDirectory </> path)
-  
+
 -- |Creates a temporary directory, calls `agda --html`, and generates the HTML
 --  output in the temporary directory.
 callAgdaToHTML :: Bool -> Maybe FilePath -> Maybe FilePath -> T.Text -> IO T.Text
@@ -255,4 +255,4 @@ reImplicit = regex [DotAll] $ T.concat
 -- It returns 'Nothing' if the list did not end with the suffix
 -- given, or 'Just' the list before the suffix, if it does.
 stripSuffix :: (Eq a) => [a] -> [a] -> Maybe [a]
-stripSuffix xs ys = reverse <$> L.stripPrefix (reverse xs) (reverse ys)
+stripSuffix lst sfx = reverse <$> L.stripPrefix (reverse sfx) (reverse lst)
