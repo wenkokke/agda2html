@@ -2,15 +2,14 @@
 module Main where
 
 import qualified Lib
-import           Data.Maybe (fromMaybe,isJust)
+import           Data.List (transpose)
+import           Data.Maybe (fromMaybe, isJust)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
-import           System.Console.GetOpt (OptDescr(..),ArgDescr(..),ArgOrder(..),usageInfo,getOpt)
-import           System.Environment (getArgs,getProgName)
+import           System.Console.GetOpt (OptDescr(..), ArgDescr(..), ArgOrder(..), usageInfo, getOpt)
+import           System.Environment (getArgs, getProgName)
 import           System.Exit (exitSuccess)
-import           System.IO (hPutStrLn,stderr)
-
-
+import           System.IO (hPutStrLn, stderr)
 
 data Options = Options
   { optInputAgda         :: Either FilePath (IO T.Text)
@@ -19,7 +18,7 @@ data Options = Options
   , optVerbose           :: Bool
   , optStripImplicitArgs :: T.Text -> T.Text
   , optLinkToAgdaStdlib  :: T.Text -> T.Text
-  , optJekyllRoot        :: Maybe FilePath
+  , optUseJekyll         :: Maybe FilePath
   }
 
 defaultOptions :: Options
@@ -30,7 +29,7 @@ defaultOptions = Options
   , optVerbose           = False
   , optStripImplicitArgs = id
   , optLinkToAgdaStdlib  = id
-  , optJekyllRoot        = Nothing
+  , optUseJekyll         = Nothing
   }
 
 options :: [ OptDescr (Options -> IO Options) ]
@@ -58,9 +57,9 @@ options =
                f <- Lib.correctStdLibHref
                return opt { optLinkToAgdaStdlib = f }))
     "Fix links to the Agda stdlib"
-  , Option [] ["jekyll-root"]
-    (ReqArg (\arg opt -> return opt { optJekyllRoot = Just arg })
-            "FILE")
+  , Option [] ["use-jekyll"]
+    (ReqArg (\arg opt -> return opt { optUseJekyll = Just arg })
+            "JEKYLL_ROOT")
     "Fix links to Jekyll posts and wrap code in {% raw %} tags."
   , Option [] ["help"]
     (NoArg  (\_ -> do
@@ -70,35 +69,35 @@ options =
     "Show help"
   ]
 
-
-readInput :: Either FilePath (IO T.Text) -> (IO T.Text, Maybe FilePath)
-readInput (Right t) = (t, Nothing)
-readInput (Left fn) = (T.readFile fn, Just fn)
-
-
 main :: IO ()
 main = do
   (actions, _, _) <- getOpt Permute options <$> getArgs
 
   opts <- foldl (>>=) (return defaultOptions) actions
-  let Options { optInputAgda         = istreamAgda'
+  let Options { optInputAgda         = istreamAgda
               , optInputHTML         = istreamHTML
               , optOutputFile        = ostream
-              , optVerbose           = v
+              , optVerbose           = verbose
               , optStripImplicitArgs = stripImplicitArgs
               , optLinkToAgdaStdlib  = linkToAgdaStdlib
-              , optJekyllRoot        = j
+              , optUseJekyll         = useJekyll
               } = opts
 
-  let (istreamAgda,fn) = readInput istreamAgda'
-  srcAgda <- istreamAgda
-  srcHTML <- fromMaybe (Lib.callAgdaToHTML v j fn srcAgda) istreamHTML
+  let (istreamAgda', maybeInputFile) = maybeReadInput istreamAgda
+  agdaSource <- istreamAgda'
+  htmlSource <- fromMaybe (Lib.callAgdaToHTML verbose useJekyll maybeInputFile agdaSource) istreamHTML
 
   let
-    blText = Lib.text srcAgda
-    blCode = map (linkToAgdaStdlib . stripImplicitArgs) (Lib.code (isJust j) srcHTML)
+    textBlocks = Lib.text agdaSource
+    codeBlocks = map (linkToAgdaStdlib . stripImplicitArgs) (Lib.code (isJust useJekyll) htmlSource)
 
-    merge    []  ys = ys
-    merge (x:xs) ys = x : merge ys xs
+  ostream . T.concat $ blend [textBlocks, codeBlocks]
 
-  ostream (T.concat (merge blText blCode))
+-- |Reads a file in `Left`, or passes on the file contents in `Right`
+maybeReadInput :: Either FilePath (IO T.Text) -> (IO T.Text, Maybe FilePath)
+maybeReadInput (Right t) = (t, Nothing)
+maybeReadInput (Left fn) = (T.readFile fn, Just fn)
+
+-- |Blends a list of list, taking elements from each list in turn.
+blend :: [[a]] -> [a]
+blend = concat . transpose

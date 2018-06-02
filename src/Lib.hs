@@ -1,79 +1,106 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Lib where
 
-import Control.Monad (forM)
 import qualified Data.Foldable as F
-import Data.Function ((&))
-import Data.String (fromString)
-import Data.Maybe (fromMaybe,fromJust,isJust)
-import Data.Monoid ((<>))
+import           Data.Function ((&))
+import           Data.String (fromString)
+import           Data.Maybe (fromMaybe)
+import           Data.Monoid ((<>))
 import qualified Data.List as L
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
-import Data.Text.ICU (Regex,MatchOption(..),regex,find,group)
-import Data.Text.ICU.Replace (replaceAll,rstring)
-import System.Directory (copyFile)
-import System.Directory.Tree (AnchoredDirTree(..),readDirectoryWith)
-import System.IO (stderr)
-import System.IO.Temp (withSystemTempDirectory)
-import System.Exit (ExitCode(..),exitWith)
-import System.FilePath
-import System.Process (StdStream(..),CreateProcess(..),createProcess_,callProcess,proc,waitForProcess)
+import           Data.Text.ICU (Regex, MatchOption(..), regex, find, group)
+import           Data.Text.ICU.Replace (replaceAll)
+import           System.Directory (createDirectoryIfMissing, getCurrentDirectory, canonicalizePath)
+import           System.Directory.Tree (AnchoredDirTree(..), readDirectoryWith)
+import           System.IO (stderr)
+import           System.IO.Temp (withSystemTempDirectory)
+import           System.Exit (ExitCode(..), exitWith)
+import           System.FilePath
+import           System.Process (StdStream(..), CreateProcess(..), createProcess_, callProcess, proc, waitForProcess)
 
-findModuleName :: T.Text -> T.Text
-findModuleName src = fromMaybe "Lib" (group 1 =<< find reModuleName src)
+-- |Extracts the module name from an Agda file.
+getModuleName :: T.Text -> T.Text
+getModuleName src = fromMaybe "Main" (group 1 =<< find reModuleName src)
   where
     reModuleName :: Regex
     reModuleName = regex [Multiline] "^module\\s+(\\S+)\\s+where"
 
-
+makeAbsolute :: FilePath -> IO FilePath
+makeAbsolute path
+  | isAbsolute path = return path
+  | otherwise       = do
+      currentDirectory <- getCurrentDirectory
+      canonicalizePath (currentDirectory </> path)
+  
+-- |Creates a temporary directory, calls `agda --html`, and generates the HTML
+--  output in the temporary directory.
 callAgdaToHTML :: Bool -> Maybe FilePath -> Maybe FilePath -> T.Text -> IO T.Text
-callAgdaToHTML v jekyllRoot inputFile src = do
+callAgdaToHTML verbose useJekyll maybeInputFile agdaSource =
   withSystemTempDirectory "agda2html" $ \tempDir -> do
 
-    -- Prepare calling agda --html:
-    (inputFile',outputFile,agdaFiles) <-
-      case inputFile of
-        { Nothing -> do
-            let moduleName = T.unpack (findModuleName src)
-                inputFile' = tempDir </> moduleName <.> "lagda"
-                outputFile = tempDir </> moduleName <.> "html"
-            T.writeFile inputFile' src
-            return (inputFile',outputFile,[])
-        ; Just inputFile' -> do
-            let (dir,fn)    = splitFileName inputFile'
-                inputFile'' = tempDir </> fn
-                outputFile  = tempDir </> "html" </> fn -<.> "html"
-            agdaFiles <- agdaFilesIn dir
-            agdaFiles' <- forM agdaFiles $ \source -> do
-              let target = tempDir </> takeFileName source
-              copyFile source target
-              return target
-            return (inputFile'',outputFile,agdaFiles')
-        }
+    -- We extract the module name and the module path from the Agda source.
+    let moduleName = getModuleName agdaSource
+    let modulePath = T.unpack <$> init (T.split (=='.') moduleName)
+
+    -- Resolve the input file and the include path
+    (inputFile, includePath) <-
+      case maybeInputFile of
+        -- If we've been given an input file, then we subtract the module names
+        -- from the directories e.g., if we have been given src/Hello/World.lagda,
+        -- which defines the module Hello.World, then we return ["src/"]
+        Just inputFile -> do
+          absInputFile <- makeAbsolute inputFile
+          let
+            absInputPath = takeDirectory absInputFile
+            directories  = splitDirectories absInputPath
+            includePath  = joinPath <$> stripSuffix directories modulePath
+          -- note: if stripSuffix returns Nothing, this indicates a mismatch
+          -- between the module names and the directory names; in this case,
+          -- we will simply pass the inputPath as our include path, and
+          -- forward Agda's error message to the user
+          return (absInputFile, fromMaybe absInputPath includePath)
+
+        -- If we've been given no input file, then we write the Agda source to a
+        -- file called <Module>.lagda in the temporary directory, and return the
+        -- path to that file, plus an empty include path.
+        Nothing -> do
+          let inputPath = tempDir </> joinPath modulePath
+          let inputFile = inputPath </> T.unpack moduleName <.> "lagda"
+          createDirectoryIfMissing True inputPath
+          T.writeFile inputFile agdaSource
+          return (inputFile, tempDir)
+
+    let outputFile = tempDir </> T.unpack moduleName <.> "html"
 
     -- Call agda --html:
-    let std_opt = if v then UseHandle stderr else CreatePipe
+    let stdOutAndErr = if verbose then UseHandle stderr else CreatePipe
 
     (_, hout, herr, pid) <-
       createProcess_ "agda"
-      ((proc "agda" ["--allow-unsolved-metas"
-                    ,"--html"
-                    ,"--html-dir=html"
-                    ,inputFile'])
+      ((proc "agda" [ "--allow-unsolved-metas"
+                    , "--html"
+                    , "--html-dir=" ++ tempDir
+                    , "--include-path=" ++ includePath
+                    , inputFile
+                    ])
         { cwd     = Just tempDir
         , std_in  = NoStream
-        , std_out = std_opt
-        , std_err = std_opt })
+        , std_out = stdOutAndErr
+        , std_err = stdOutAndErr })
 
     -- If agda does not fail:
     exitCode <- waitForProcess pid
     case exitCode of
-      ExitSuccess   -> do
-        srcHTML <- T.readFile outputFile
-        if isJust jekyllRoot
-          then return $ liquidifyLocalHref (fromJust jekyllRoot) agdaFiles srcHTML
-          else return $ srcHTML
+      ExitSuccess -> do
+        htmlSource <- T.readFile outputFile
+        case useJekyll of
+          Just jekyllRoot -> do
+            localFiles <- agdaFilesIn includePath
+            return $ liquidifyLocalHref jekyllRoot localFiles htmlSource
+          Nothing ->
+            return htmlSource
+
       ExitFailure e -> do
         let (Just hout') = hout
             (Just herr') = herr
@@ -82,11 +109,13 @@ callAgdaToHTML v jekyllRoot inputFile src = do
         T.hPutStrLn stderr (T.append out err)
         exitWith (ExitFailure e)
 
+
 preOpen, preClose, codeOpen, codeClose :: T.Text
 preOpen   = "<pre class=\"Agda\">"
 preClose  = "</pre>"
 codeOpen  = "\\begin{code}"
 codeClose = "\\end{code}"
+
 
 text :: T.Text -> [T.Text]
 text = enter
@@ -110,12 +139,8 @@ text = enter
 code :: Bool -> T.Text -> [T.Text]
 code jekyll = enter
   where
-    rawOpen
-      | jekyll    = "{% raw %}"
-      | otherwise = ""
-    rawClose
-      | jekyll    = "{% endraw %}"
-      | otherwise = ""
+    rawOpen  | jekyll = "{% raw %}"    | otherwise = ""
+    rawClose | jekyll = "{% endraw %}" | otherwise = ""
 
     enter :: T.Text -> [T.Text]
     enter t0 | T.null t0 = []
@@ -136,12 +161,12 @@ code jekyll = enter
                       then T.empty
                       else T.concat [preOpen,rawOpen,c2,rawClose,preClose]
 
--- |Correct references to local files.
+
+-- |Fix references to local modules.
 liquidifyLocalHref :: FilePath -> [FilePath] -> T.Text -> T.Text
 liquidifyLocalHref jekyllRoot paths =
   replaceAll (reLocal paths) . fromString $
     "\"{% endraw %}{{ site.baseurl }}{% link " <> jekyllRoot <> "$1.md %}{% raw %}$2\""
-
 
 -- |An ICU regular expression which matches links to local files.
 reLocal :: [FilePath] -> Regex
@@ -156,7 +181,6 @@ correctStdLibHref :: IO (T.Text -> T.Text)
 correctStdLibHref =
   reStdlibHref >>= \re ->
   return (replaceAll re "\"https://agda.github.io/agda-stdlib/$1.html$2\"")
-
 
 -- |An ICU regular expression which matches links to the Agda stdlib.
 reStdlibHref :: IO Regex
@@ -173,7 +197,6 @@ reStdlibHref = do
 -- |A url pointing to the GitHub repository of the Agda stdlib.
 stdlibUrl :: String
 stdlibUrl = "https://github.com/agda/agda-stdlib.git"
-
 
 -- |Generate a list of the Agda stdlib modules.
 stdlibModules :: IO [String]
@@ -196,7 +219,6 @@ stdlibModules =
 
     return $ map file2mod agdaFiles
 
-
 -- |Gather all .agda and .lagda files within a directory.
 agdaFilesIn :: FilePath -> IO [FilePath]
 agdaFilesIn dir = do
@@ -210,7 +232,6 @@ agdaFilesIn dir = do
 -- |Remove implicit arguments from Agda HTML.
 removeImplicit :: T.Text -> T.Text
 removeImplicit = replaceAll reImplicit ""
-
 
 -- |An ICU regular expression which matches implicit parameters in Agda HTMl.
 reImplicit :: Regex
@@ -226,3 +247,8 @@ reImplicit = regex [DotAll] $ T.concat
     reRightArrow = "(→|&#8594;|&#x2192;|&rarr;)"
 
 
+-- | The 'stripSuffix' function drops the given suffix from a list.
+-- It returns 'Nothing' if the list did not end with the suffix
+-- given, or 'Just' the list before the suffix, if it does.
+stripSuffix :: (Eq a) => [a] -> [a] -> Maybe [a]
+stripSuffix xs ys = reverse <$> L.stripPrefix (reverse xs) (reverse ys)
