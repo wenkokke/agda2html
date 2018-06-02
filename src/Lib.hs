@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Lib where
 
+import           Control.Applicative ((<|>))
 import qualified Data.Foldable as F
 import           Data.Function ((&))
 import           Data.String (fromString)
@@ -35,10 +36,8 @@ callAgdaToHTML verbose useJekyll maybeInputFile agdaSource =
 
     -- We extract the module name and the module path from the Agda source.
     let
-      defaultModuleName :: String
-      defaultModuleName = fromMaybe "Main" (takeBaseName <$> maybeInputFile)
-      moduleName        = fromMaybe defaultModuleName (T.unpack <$> getModuleName agdaSource)
-      modulePath        = init (splitOn "." moduleName)
+      moduleName = fromMaybe "Main" ((takeBaseName <$> maybeInputFile) <|> (T.unpack <$> getModuleName agdaSource))
+      modulePath = init (splitOn "." moduleName)
 
     -- Resolve the input file and the include path
     (inputFile, includePath) <-
