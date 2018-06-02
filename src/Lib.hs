@@ -17,7 +17,7 @@ import           System.IO (stderr)
 import           System.IO.Temp (withSystemTempDirectory)
 import           System.Exit (ExitCode(..), exitWith)
 import           System.FilePath
-import           System.Process (StdStream(..), CreateProcess(..), createProcess_, callProcess, proc, waitForProcess)
+import           System.Process
 
 -- |Extracts the module name from an Agda file.
 getModuleName :: T.Text -> T.Text
@@ -75,19 +75,22 @@ callAgdaToHTML verbose useJekyll maybeInputFile agdaSource =
 
     -- Call agda --html:
     let stdOutAndErr = if verbose then UseHandle stderr else CreatePipe
+    let cmdName = "agda"
+    let cmdArgs = [ "--allow-unsolved-metas"
+                  , "--html"
+                  , "--html-dir=" ++ tempDir
+                  , "--include-path=" ++ includePath
+                  , inputFile ]
+    let cmdProc =
+          (proc cmdName cmdArgs)
+          { cwd     = Just tempDir
+          , std_in  = NoStream
+          , std_out = stdOutAndErr
+          , std_err = stdOutAndErr }
 
-    (_, hout, herr, pid) <-
-      createProcess_ "agda"
-      ((proc "agda" [ "--allow-unsolved-metas"
-                    , "--html"
-                    , "--html-dir=" ++ tempDir
-                    , "--include-path=" ++ includePath
-                    , inputFile
-                    ])
-        { cwd     = Just tempDir
-        , std_in  = NoStream
-        , std_out = stdOutAndErr
-        , std_err = stdOutAndErr })
+    putStrLn $ showCommandForUser cmdName cmdArgs
+
+    (_, hout, herr, pid) <- createProcess_ "agda" cmdProc
 
     -- If agda does not fail:
     exitCode <- waitForProcess pid
@@ -102,11 +105,12 @@ callAgdaToHTML verbose useJekyll maybeInputFile agdaSource =
             return htmlSource
 
       ExitFailure e -> do
-        let (Just hout') = hout
-            (Just herr') = herr
-        out <- T.hGetContents hout'
-        err <- T.hGetContents herr'
-        T.hPutStrLn stderr (T.append out err)
+        maybeHout <- sequence (T.hGetContents <$> hout)
+        maybeHerr <- sequence (T.hGetContents <$> herr)
+        T.hPutStrLn stderr $
+          fromMaybe "" maybeHout
+          `T.append`
+          fromMaybe "" maybeHerr
         exitWith (ExitFailure e)
 
 
