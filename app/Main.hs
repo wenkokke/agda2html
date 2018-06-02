@@ -7,9 +7,11 @@ import           Data.Maybe (fromMaybe, isJust)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import           System.Console.GetOpt (OptDescr(..), ArgDescr(..), ArgOrder(..), usageInfo, getOpt)
+import           System.Directory (createDirectoryIfMissing)
 import           System.Environment (getArgs, getProgName)
 import           System.Exit (exitSuccess)
 import           System.IO (hPutStrLn, stderr)
+import           System.FilePath (takeDirectory)
 
 data Options = Options
   { optInputAgda         :: Either FilePath (IO T.Text)
@@ -43,7 +45,7 @@ options =
             "FILE")
     "Input HTML file (optional)"
   , Option "o" ["output"]
-    (ReqArg (\arg opt -> return opt { optOutputFile = T.writeFile arg })
+    (ReqArg (\arg opt -> return opt { optOutputFile = writeFileCreateDirectoryIfMissing arg })
             "FILE")
     "Output file (optional)"
   , Option "v" ["verbose"]
@@ -92,6 +94,12 @@ main = do
     codeBlocks = map (linkToAgdaStdlib . stripImplicitArgs) (Lib.code (isJust useJekyll) htmlSource)
 
   ostream . T.concat $ blend [textBlocks, codeBlocks]
+
+-- |Writes to a file, creating the directories if missing.
+writeFileCreateDirectoryIfMissing :: FilePath -> T.Text -> IO ()
+writeFileCreateDirectoryIfMissing file text = do
+  createDirectoryIfMissing True (takeDirectory file)
+  T.writeFile file text
 
 -- |Reads a file in `Left`, or passes on the file contents in `Right`
 maybeReadInput :: Either FilePath (IO T.Text) -> (IO T.Text, Maybe FilePath)
