@@ -2,12 +2,12 @@ name:                agda2html
 version:             0.1.0.3
 synopsis:            Initial project template from stack
 description:         Please see README.md
-homepage:            https://github.com/githubuser/agda2html#readme
+homepage:            https://github.com/wenkokke/agda2html#readme
 license:             BSD3
 license-file:        LICENSE
-author:              Pepijn Kokke
-maintainer:          pepijn.kokke@gmail.com
-copyright:           2016 Pepijn Kokke
+author:              Wen Kokke
+maintainer:          wen.kokke@gmail.com
+copyright:           2016 Wen Kokke
 category:            Web
 build-type:          Simple
 cabal-version:       >=1.10
@@ -20,6 +20,7 @@ library
                      , directory-tree >= 0.12
                      , filepath >= 1.0
                      , process >= 1.2
+                     , split >= 0.2.3.3
                      , temporary >= 1.0
                      , text >= 1.2.2.1
                      , text-icu >= 0.6.3.7
@@ -37,4 +38,4 @@ executable agda2html
 
 source-repository head
   type:     git
-  location: https://github.com/githubuser/agda2html
+  location: https://github.com/wenkokke/agda2html
