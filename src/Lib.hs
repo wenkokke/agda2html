@@ -7,6 +7,7 @@ import           Data.String (fromString)
 import           Data.Maybe (fromMaybe)
 import           Data.Monoid ((<>))
 import qualified Data.List as L
+import           Data.List.Split (splitOn)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import           Data.Text.ICU (Regex, MatchOption(..), regex, find, group)
@@ -20,18 +21,11 @@ import           System.FilePath
 import           System.Process
 
 -- |Extracts the module name from an Agda file.
-getModuleName :: T.Text -> T.Text
-getModuleName src = fromMaybe "Main" (group 1 =<< find reModuleName src)
+getModuleName :: T.Text -> Maybe T.Text
+getModuleName agdaSource = group 1 =<< find reModuleName agdaSource
   where
     reModuleName :: Regex
     reModuleName = regex [Multiline] "^module\\s+(\\S+)\\s+where"
-
-makeAbsolute :: FilePath -> IO FilePath
-makeAbsolute path
-  | isAbsolute path = return path
-  | otherwise       = do
-      currentDirectory <- getCurrentDirectory
-      canonicalizePath (currentDirectory </> path)
 
 -- |Creates a temporary directory, calls `agda --html`, and generates the HTML
 --  output in the temporary directory.
@@ -40,8 +34,11 @@ callAgdaToHTML verbose useJekyll maybeInputFile agdaSource =
   withSystemTempDirectory "agda2html" $ \tempDir -> do
 
     -- We extract the module name and the module path from the Agda source.
-    let moduleName = getModuleName agdaSource
-    let modulePath = T.unpack <$> init (T.split (=='.') moduleName)
+    let
+      defaultModuleName :: String
+      defaultModuleName = fromMaybe "Main" (takeBaseName <$> maybeInputFile)
+      moduleName        = fromMaybe defaultModuleName (T.unpack <$> getModuleName agdaSource)
+      modulePath        = init (splitOn "." moduleName)
 
     -- Resolve the input file and the include path
     (inputFile, includePath) <-
@@ -66,12 +63,12 @@ callAgdaToHTML verbose useJekyll maybeInputFile agdaSource =
         -- path to that file, plus an empty include path.
         Nothing -> do
           let inputPath = tempDir </> joinPath modulePath
-          let inputFile = inputPath </> T.unpack moduleName <.> "lagda"
+          let inputFile = inputPath </> moduleName <.> "lagda"
           createDirectoryIfMissing True inputPath
           T.writeFile inputFile agdaSource
           return (inputFile, tempDir)
 
-    let outputFile = tempDir </> T.unpack moduleName <.> "html"
+    let outputFile = tempDir </> moduleName <.> "html"
 
     -- Call agda --html:
     let stdOutAndErr = if verbose then UseHandle stderr else CreatePipe
@@ -250,8 +247,16 @@ reImplicit = regex [DotAll] $ T.concat
     reForall = "(∀|&#8704;|&#x2200;|&forall;)"
     reRightArrow = "(→|&#8594;|&#x2192;|&rarr;)"
 
+    
+-- |Make a path absolute.
+makeAbsolute :: FilePath -> IO FilePath
+makeAbsolute path
+  | isAbsolute path = return path
+  | otherwise       = do
+      currentDirectory <- getCurrentDirectory
+      canonicalizePath (currentDirectory </> path)
 
--- | The 'stripSuffix' function drops the given suffix from a list.
+-- |The 'stripSuffix' function drops the given suffix from a list.
 -- It returns 'Nothing' if the list did not end with the suffix
 -- given, or 'Just' the list before the suffix, if it does.
 stripSuffix :: (Eq a) => [a] -> [a] -> Maybe [a]
