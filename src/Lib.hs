@@ -1,7 +1,6 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Lib where
 
-import           Control.Applicative ((<|>))
 import qualified Data.Foldable as F
 import           Data.Function ((&))
 import           Data.String (fromString)
@@ -22,11 +21,21 @@ import           System.FilePath
 import           System.Process
 
 -- |Extracts the module name from an Agda file.
-getModuleName :: T.Text -> Maybe T.Text
-getModuleName agdaSource = group 1 =<< find reModuleName agdaSource
+getModuleNameFromSource :: T.Text -> Maybe T.Text
+getModuleNameFromSource agdaSource = group 1 =<< find reModuleName agdaSource
   where
     reModuleName :: Regex
     reModuleName = regex [Multiline] "^module\\s+(\\S+)\\s+where"
+
+-- |Decides the module name based on Agda source and potentially a file path.
+getModuleName :: Maybe FilePath -> T.Text -> String
+getModuleName maybeInputFile agdaSource =
+  case (takeBaseName <$> maybeInputFile, T.unpack <$> getModuleNameFromSource agdaSource) of
+    (Nothing, Nothing)               -> "Main"
+    (Nothing, Just moduleName)       -> moduleName
+    (Just baseName, Nothing)         -> baseName
+    (Just baseName, Just moduleName) ->
+      if baseName == last (splitOn "." moduleName) then moduleName else baseName
 
 -- |Creates a temporary directory, calls `agda --html`, and generates the HTML
 --  output in the temporary directory.
@@ -36,7 +45,7 @@ callAgdaToHTML verbose useJekyll maybeInputFile agdaSource =
 
     -- We extract the module name and the module path from the Agda source.
     let
-      moduleName = fromMaybe "Main" ((takeBaseName <$> maybeInputFile) <|> (T.unpack <$> getModuleName agdaSource))
+      moduleName = getModuleName maybeInputFile agdaSource
       modulePath = init (splitOn "." moduleName)
 
     -- Resolve the input file and the include path
