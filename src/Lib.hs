@@ -1,6 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 module Lib where
 
+import           Control.Monad (forM)
 import qualified Data.Foldable as F
 import           Data.Function ((&))
 import           Data.String (fromString)
@@ -11,7 +12,7 @@ import           Data.List.Split (splitOn)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import           Data.Text.ICU (Regex, MatchOption(..), regex, find, group)
-import           Data.Text.ICU.Replace (replaceAll)
+import           Data.Text.ICU.Replace (Replace, replaceAll)
 import           System.Directory (createDirectoryIfMissing, getCurrentDirectory, canonicalizePath)
 import           System.Directory.Tree (AnchoredDirTree(..), readDirectoryWith)
 import           System.IO (stderr)
@@ -86,14 +87,15 @@ callAgdaToHTML verbose useJekyll maybeInputFile agdaSource =
                   , "--html-dir=" ++ tempDir
                   , "--include-path=" ++ includePath
                   , inputFile ]
+
+    putStrLn $ showCommandForUser cmdName cmdArgs
+
     let cmdProc =
           (proc cmdName cmdArgs)
           { cwd     = Just tempDir
           , std_in  = NoStream
           , std_out = stdOutAndErr
           , std_err = stdOutAndErr }
-
-    putStrLn $ showCommandForUser cmdName cmdArgs
 
     (_, hout, herr, pid) <- createProcess_ "agda" cmdProc
 
@@ -105,7 +107,9 @@ callAgdaToHTML verbose useJekyll maybeInputFile agdaSource =
         case useJekyll of
           Just jekyllRoot -> do
             localFiles <- agdaFilesIn includePath
-            return $ liquidifyLocalHref jekyllRoot localFiles htmlSource
+            localModules <- forM localFiles $ \localFile ->
+              T.pack . getModuleName (Just localFile) <$> T.readFile localFile
+            return $ liquidifyLocalHref jekyllRoot localModules htmlSource
           Nothing ->
             return htmlSource
 
@@ -170,20 +174,24 @@ code jekyll = enter
                       then T.empty
                       else T.concat [preOpen,rawOpen,c2,rawClose,preClose]
 
-
 -- |Fix references to local modules.
-liquidifyLocalHref :: FilePath -> [FilePath] -> T.Text -> T.Text
-liquidifyLocalHref jekyllRoot paths =
-  replaceAll (reLocal paths) . fromString $
-    "\"{% endraw %}{{ site.baseurl }}{% link " <> jekyllRoot <> "$1.md %}{% raw %}$2\""
-
--- |An ICU regular expression which matches links to local files.
-reLocal :: [FilePath] -> Regex
-reLocal paths = regex [] hrefPatn
+liquidifyLocalHref :: FilePath -> [T.Text] -> T.Text -> T.Text
+liquidifyLocalHref jekyllRoot localModules agdaSource =
+  foldr liquidifyLocalModule agdaSource localModules
   where
-    filePatn = T.concat . L.intersperse "|" . map (T.pack . takeBaseName) $ paths
-    hrefPatn = "[\"'](" `T.append` filePatn `T.append` ")\\.html(#[^\"^']+)?[\"']"
+    liquidifyLocalModule :: T.Text -> T.Text -> T.Text
+    liquidifyLocalModule localModule = replaceAll reLocalModule replaceString
+      where
+        localFile :: FilePath
+        localFile = T.unpack $ T.replace "." "/" localModule
 
+        reLocalModule :: Regex
+        reLocalModule = regex [] $
+          "[\"'](" `T.append` localModule `T.append` ")\\.html(#[^\"^']+)?[\"']"
+
+        replaceString :: Replace
+        replaceString = fromString $
+          "\"{% endraw %}{{ site.baseurl }}{% link " <> jekyllRoot </> localFile <> ".md %}{% raw %}$2\""
 
 -- |Correct references to the Agda stdlib.
 correctStdLibHref :: IO (T.Text -> T.Text)
@@ -233,9 +241,9 @@ agdaFilesIn :: FilePath -> IO [FilePath]
 agdaFilesIn dir = do
   _ :/ tree <- readDirectoryWith return dir
   let
-    isAgdaSrc :: FilePath -> Bool
-    isAgdaSrc = (`elem`[".agda",".lagda"]) . takeExtension
-  return $ filter isAgdaSrc (F.toList tree)
+    isAgdaSource :: FilePath -> Bool
+    isAgdaSource = (`elem`[".agda",".lagda"]) . takeExtension
+  return $ filter isAgdaSource (F.toList tree)
 
 
 -- |Remove implicit arguments from Agda HTML.
@@ -255,7 +263,7 @@ reImplicit = regex [DotAll] $ T.concat
     reForall = "(∀|&#8704;|&#x2200;|&forall;)"
     reRightArrow = "(→|&#8594;|&#x2192;|&rarr;)"
 
-    
+
 -- |Make a path absolute.
 makeAbsolute :: FilePath -> IO FilePath
 makeAbsolute path
