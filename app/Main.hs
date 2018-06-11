@@ -6,11 +6,13 @@ import           Data.List (transpose)
 import           Data.Maybe (fromMaybe, isJust)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
+import           Data.Version (showVersion)
+import           Paths_agda2html (version)
 import           System.Console.GetOpt (OptDescr(..), ArgDescr(..), ArgOrder(..), usageInfo, getOpt)
 import           System.Directory (createDirectoryIfMissing)
 import           System.Environment (getArgs, getProgName)
 import           System.Exit (exitSuccess)
-import           System.IO (hPutStrLn, stderr)
+import           System.IO (hPutStrLn, stderr, stdout)
 import           System.FilePath (takeDirectory)
 
 data Options = Options
@@ -48,7 +50,7 @@ options =
     (ReqArg (\arg opt -> return opt { optOutputFile = writeFileCreateDirectoryIfMissing arg })
             "FILE")
     "Output file (optional)"
-  , Option "v" ["verbose"]
+  , Option [] ["verbose"]
     (NoArg (\opt -> return opt { optVerbose = True }))
     "Verbose output"
   , Option [] ["strip-implicit-args"]
@@ -63,12 +65,17 @@ options =
     (ReqArg (\arg opt -> return opt { optUseJekyll = Just arg })
             "JEKYLL_ROOT")
     "Fix links to Jekyll posts and wrap code in {% raw %} tags."
-  , Option [] ["help"]
+  , Option "h" ["help"]
     (NoArg  (\_ -> do
                prg <- getProgName
                hPutStrLn stderr (usageInfo prg options)
                exitSuccess))
     "Show help"
+  , Option "v" ["version"]
+    (NoArg (\_ -> do
+               hPutStrLn stdout $ "agda2html " ++ showVersion version
+               exitSuccess))
+    "Show version"
   ]
 
 main :: IO ()
