@@ -23,6 +23,7 @@ data Options = Options
   , optStripImplicitArgs :: T.Text -> T.Text
   , optLinkToAgdaStdlib  :: T.Text -> T.Text
   , optUseJekyll         :: Maybe FilePath
+  , optLocalRefSugar     :: Bool
   }
 
 defaultOptions :: Options
@@ -34,6 +35,7 @@ defaultOptions = Options
   , optStripImplicitArgs = id
   , optLinkToAgdaStdlib  = id
   , optUseJekyll         = Nothing
+  , optLocalRefSugar     = False
   }
 
 options :: [ OptDescr (Options -> IO Options) ]
@@ -76,6 +78,9 @@ options =
                hPutStrLn stdout $ "agda2html " ++ showVersion version
                exitSuccess))
     "Show version"
+  , Option "lrs" ["local-references"]
+    (NoArg (\opt -> return opt { optLocalRefSugar = True }))
+    "Enable cleaner syntax for local references. Only works when using Jekyll"
   ]
 
 main :: IO ()
@@ -90,6 +95,7 @@ main = do
               , optStripImplicitArgs = stripImplicitArgs
               , optLinkToAgdaStdlib  = linkToAgdaStdlib
               , optUseJekyll         = useJekyll
+              , optLocalRefSugar     = localRefSugar
               } = opts
 
   let (istreamAgda', maybeInputFile) = maybeReadInput istreamAgda
@@ -97,10 +103,13 @@ main = do
   htmlSource <- fromMaybe (Lib.callAgdaToHTML verbose useJekyll maybeInputFile agdaSource) istreamHTML
 
   let
-    textBlocks = Lib.text agdaSource
+    rawTextBlocks = Lib.text agdaSource
     codeBlocks = map (linkToAgdaStdlib . stripImplicitArgs) (Lib.code (isJust useJekyll) htmlSource)
 
-  ostream . T.concat $ blend [textBlocks, codeBlocks]
+  textBlocks <- (if optLocalRefSugar opts then mapM (Lib.postProcess useJekyll maybeInputFile) rawTextBlocks
+                                          else return rawTextBlocks)
+
+  ostream $ T.concat $ blend [textBlocks, codeBlocks]
 
 -- |Writes to a file, creating the directories if missing.
 writeFileCreateDirectoryIfMissing :: FilePath -> T.Text -> IO ()

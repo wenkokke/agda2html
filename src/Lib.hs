@@ -38,6 +38,49 @@ getModuleName maybeInputFile agdaSource =
     (Just baseName, Just moduleName) ->
       if baseName == last (splitOn "." moduleName) then moduleName else baseName
 
+-- | Applied to all text after other operations have finished
+postProcess :: Maybe FilePath -> Maybe FilePath -> T.Text -> IO T.Text
+postProcess useJekyll maybeInputFile agdaSource =
+  withSystemTempDirectory "agda2html" $ \tempDir -> do
+  let moduleName = getModuleName maybeInputFile agdaSource
+      modulePath = init (splitOn "." moduleName)
+  -- Resolve the input file and the include path
+  (inputFile, includePath) <-
+    case maybeInputFile of
+        -- If we've been given an input file, then we subtract the module names
+        -- from the directories e.g., if we have been given src/Hello/World.lagda,
+        -- which defines the module Hello.World, then we return ["src/"]
+        Just inputFile -> do
+          absInputFile <- makeAbsolute inputFile
+          let
+            absInputPath = takeDirectory absInputFile
+            directories  = splitDirectories absInputPath
+            includePath  = joinPath <$> stripSuffix directories modulePath
+          -- note: if stripSuffix returns Nothing, this indicates a mismatch
+          -- between the module names and the directory names; in this case,
+          -- we will simply pass the inputPath as our include path, and
+          -- forward Agda's error message to the user
+          return (absInputFile, fromMaybe absInputPath includePath)
+
+                  -- If we've been given no input file, then we write the Agda source to a
+        -- file called <Module>.lagda in the temporary directory, and return the
+        -- path to that file, plus an empty include path.
+        Nothing -> do
+          let inputPath = tempDir </> joinPath modulePath
+          let inputFile = inputPath </> moduleName <.> "lagda"
+          createDirectoryIfMissing True inputPath
+          T.writeFile inputFile agdaSource
+          return (inputFile, tempDir)
+
+  case useJekyll of
+    Just jekyllRoot -> do
+      localFiles <- agdaFilesIn includePath
+      localModules <- forM localFiles $ \localFile ->
+        T.pack . getModuleName (Just localFile) <$> T.readFile localFile
+      return $ desugarLocalReferences jekyllRoot localModules agdaSource
+    Nothing ->
+      return agdaSource
+        
 -- |Creates a temporary directory, calls `agda --html`, and generates the HTML
 --  output in the temporary directory.
 callAgdaToHTML :: Bool -> Maybe FilePath -> Maybe FilePath -> T.Text -> IO T.Text
@@ -173,6 +216,28 @@ code jekyll = enter
                  c3 = if T.null c2
                       then T.empty
                       else T.concat [preOpen,rawOpen,c2,rawClose,preClose]
+
+-- |Replace our special syntax for local references with something Jekyll likes
+desugarLocalReferences :: FilePath -> [T.Text] -> T.Text -> T.Text
+desugarLocalReferences jekyllRoot localModules agdaSource =
+  foldr desugarOne agdaSource localModules
+  where
+    desugarOne :: T.Text -> T.Text -> T.Text
+    desugarOne localModule = replaceAll reLocalRef workingRefLink
+      where
+        localFile :: FilePath
+        localFile = T.unpack $ T.replace "." "/" localModule
+        
+        reLocalRef :: Regex          
+        reLocalRef = regex [] $ "\\[(.*)\\]\\[" `T.append` localModule `T.append` "(#.*)?\\]"
+
+
+        workingRefLink :: Replace
+        workingRefLink = fromString $
+          (T.unpack ("[$1]({{ site.baseurl }}{% link " `T.append` (T.pack (jekyllRoot </> localFile)) `T.append`".md$2%})"))
+
+                   
+        
 
 -- |Fix references to local modules.
 liquidifyLocalHref :: FilePath -> [T.Text] -> T.Text -> T.Text
