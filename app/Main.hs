@@ -103,14 +103,13 @@ main = do
   htmlSource <- fromMaybe (Lib.callAgdaToHTML verbose useJekyll maybeInputFile agdaSource) istreamHTML
 
   let
-    textBlocks = Lib.text agdaSource
+    rawTextBlocks = Lib.text agdaSource
     codeBlocks = map (linkToAgdaStdlib . stripImplicitArgs) (Lib.code (isJust useJekyll) htmlSource)
-    allBlocks  = T.concat $ blend [textBlocks, codeBlocks]
 
-  output <- (if optLocalRefSugar opts then Lib.postProcess useJekyll maybeInputFile allBlocks
-                                      else return allBlocks)
+  textBlocks <- (if optLocalRefSugar opts then mapM (Lib.postProcess useJekyll maybeInputFile) rawTextBlocks
+                                          else return rawTextBlocks)
 
-  ostream output
+  ostream $ T.concat $ blend [textBlocks, codeBlocks]
 
 -- |Writes to a file, creating the directories if missing.
 writeFileCreateDirectoryIfMissing :: FilePath -> T.Text -> IO ()
