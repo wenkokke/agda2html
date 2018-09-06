@@ -229,12 +229,12 @@ desugarLocalReferences jekyllRoot localModules agdaSource =
         localFile = T.unpack $ T.replace "." "/" localModule
 
         reLocalRef :: Regex
-        reLocalRef = regex [] $ "\\[(.*)\\]\\[^" `T.append` localModule `T.append` "(#.*)?\\]"
+        reLocalRef = regex [] $ "\\[(.*)\\]\\[" `T.append` localModule `T.append` "(#.*)?\\]"
 
 
         workingRefLink :: Replace
         workingRefLink = fromString $
-          (T.unpack ("[$1]({{ site.baseurl }}{% link " `T.append` (T.pack (jekyllRoot </> localFile)) `T.append`".md$2%})"))
+          (T.unpack ("[$1]({{ site.baseurl }}{% link " `T.append` (T.pack (jekyllRoot </> localFile)) `T.append`".md%}$2)"))
 
 
 
