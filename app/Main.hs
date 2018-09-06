@@ -23,6 +23,7 @@ data Options = Options
   , optStripImplicitArgs :: T.Text -> T.Text
   , optLinkToAgdaStdlib  :: T.Text -> T.Text
   , optUseJekyll         :: Maybe FilePath
+  , optLocalRefSugar     :: Bool
   }
 
 defaultOptions :: Options
@@ -34,6 +35,7 @@ defaultOptions = Options
   , optStripImplicitArgs = id
   , optLinkToAgdaStdlib  = id
   , optUseJekyll         = Nothing
+  , optLocalRefSugar     = False
   }
 
 options :: [ OptDescr (Options -> IO Options) ]
@@ -76,6 +78,9 @@ options =
                hPutStrLn stdout $ "agda2html " ++ showVersion version
                exitSuccess))
     "Show version"
+  , Option "lrs" ["local-references"]
+    (NoArg (\opt -> return opt { optLocalRefSugar = True }))
+    "Enable cleaner syntax for local references. Only works when using Jekyll"
   ]
 
 main :: IO ()
@@ -90,17 +95,25 @@ main = do
               , optStripImplicitArgs = stripImplicitArgs
               , optLinkToAgdaStdlib  = linkToAgdaStdlib
               , optUseJekyll         = useJekyll
+              , optLocalRefSugar     = localRefSugar
               } = opts
 
   let (istreamAgda', maybeInputFile) = maybeReadInput istreamAgda
   agdaSource <- istreamAgda'
+  --rawAgdaSource <- istreamAgda'
+  --agdaSource <- if optLocalRefSugar opts then Lib.preProcess useJekyll maybeInputFile rawAgdaSource
+  --                                          else return rawAgdaSource
   htmlSource <- fromMaybe (Lib.callAgdaToHTML verbose useJekyll maybeInputFile agdaSource) istreamHTML
 
   let
     textBlocks = Lib.text agdaSource
     codeBlocks = map (linkToAgdaStdlib . stripImplicitArgs) (Lib.code (isJust useJekyll) htmlSource)
+    allBlocks  = T.concat $ blend [textBlocks, codeBlocks]
 
-  ostream . T.concat $ blend [textBlocks, codeBlocks]
+  output <- (if optLocalRefSugar opts then Lib.postProcess useJekyll maybeInputFile allBlocks
+                                      else return allBlocks)
+
+  ostream output
 
 -- |Writes to a file, creating the directories if missing.
 writeFileCreateDirectoryIfMissing :: FilePath -> T.Text -> IO ()
