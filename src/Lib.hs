@@ -80,7 +80,7 @@ postProcess useJekyll maybeInputFile agdaSource =
       return $ desugarLocalReferences jekyllRoot localModules agdaSource
     Nothing ->
       return agdaSource
-        
+
 -- |Creates a temporary directory, calls `agda --html`, and generates the HTML
 --  output in the temporary directory.
 callAgdaToHTML :: Bool -> Maybe FilePath -> Maybe FilePath -> T.Text -> IO T.Text
@@ -227,17 +227,17 @@ desugarLocalReferences jekyllRoot localModules agdaSource =
       where
         localFile :: FilePath
         localFile = T.unpack $ T.replace "." "/" localModule
-        
-        reLocalRef :: Regex          
-        reLocalRef = regex [] $ "\\[(.*)\\]\\[" `T.append` localModule `T.append` "(#.*)?\\]"
+
+        reLocalRef :: Regex
+        reLocalRef = regex [] $ "\\[(.*)\\]\\[^" `T.append` localModule `T.append` "(#.*)?\\]"
 
 
         workingRefLink :: Replace
         workingRefLink = fromString $
           (T.unpack ("[$1]({{ site.baseurl }}{% link " `T.append` (T.pack (jekyllRoot </> localFile)) `T.append`".md$2%})"))
 
-                   
-        
+
+
 
 -- |Fix references to local modules.
 liquidifyLocalHref :: FilePath -> [T.Text] -> T.Text -> T.Text

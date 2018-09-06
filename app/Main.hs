@@ -43,26 +43,29 @@ options =
   [ Option "i" ["input"]
     (ReqArg (\arg opt -> return opt { optInputAgda = Left arg })
             "FILE")
-    "Input Agda file (optional)"
+    "Input Agda file (optional)."
   , Option [] ["input-html"]
     (ReqArg (\arg opt -> return opt { optInputHTML = Just (T.readFile arg) })
             "FILE")
-    "Input HTML file (optional)"
+    "Input HTML file (optional)."
   , Option "o" ["output"]
     (ReqArg (\arg opt -> return opt { optOutputFile = writeFileCreateDirectoryIfMissing arg })
             "FILE")
-    "Output file (optional)"
+    "Output file (optional)."
   , Option [] ["verbose"]
     (NoArg (\opt -> return opt { optVerbose = True }))
-    "Verbose output"
+    "Verbose output."
   , Option [] ["strip-implicit-args"]
     (NoArg (\opt -> return opt { optStripImplicitArgs = Lib.removeImplicit }))
-    "Strip implicit arguments"
+    "Strip implicit arguments."
   , Option [] ["link-to-agda-stdlib"]
     (NoArg (\opt -> do
                f <- Lib.correctStdLibHref
                return opt { optLinkToAgdaStdlib = f }))
-    "Fix links to the Agda stdlib"
+    "Fix links to the Agda stdlib."
+  , Option "" ["link-to-local-agda-names"]
+    (NoArg (\opt -> return opt { optLocalRefSugar = True }))
+    "Add syntax for linking to Agda names. Only works when using Jekyll."
   , Option [] ["use-jekyll"]
     (ReqArg (\arg opt -> return opt { optUseJekyll = Just arg })
             "JEKYLL_ROOT")
@@ -72,15 +75,12 @@ options =
                prg <- getProgName
                hPutStrLn stderr (usageInfo prg options)
                exitSuccess))
-    "Show help"
+    "Show help."
   , Option "v" ["version"]
     (NoArg (\_ -> do
                hPutStrLn stdout $ "agda2html " ++ showVersion version
                exitSuccess))
-    "Show version"
-  , Option "lrs" ["local-references"]
-    (NoArg (\opt -> return opt { optLocalRefSugar = True }))
-    "Enable cleaner syntax for local references. Only works when using Jekyll"
+    "Show version."
   ]
 
 main :: IO ()
