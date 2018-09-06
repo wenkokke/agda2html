@@ -100,9 +100,6 @@ main = do
 
   let (istreamAgda', maybeInputFile) = maybeReadInput istreamAgda
   agdaSource <- istreamAgda'
-  --rawAgdaSource <- istreamAgda'
-  --agdaSource <- if optLocalRefSugar opts then Lib.preProcess useJekyll maybeInputFile rawAgdaSource
-  --                                          else return rawAgdaSource
   htmlSource <- fromMaybe (Lib.callAgdaToHTML verbose useJekyll maybeInputFile agdaSource) istreamHTML
 
   let
