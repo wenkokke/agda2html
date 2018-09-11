@@ -3,7 +3,7 @@ version:             0.2.2.0
 synopsis:            Initial project template from stack
 description:         Please see README.md
 homepage:            https://github.com/wenkokke/agda2html#readme
-license:             BSD3
+license:             LGPL
 license-file:        LICENSE
 author:              Wen Kokke
 maintainer:          wen.kokke@gmail.com
