@@ -26,7 +26,7 @@ getModuleNameFromSource :: T.Text -> Maybe T.Text
 getModuleNameFromSource agdaSource = group 1 =<< find reModuleName agdaSource
   where
     reModuleName :: Regex
-    reModuleName = regex [Multiline] "^module\\s+(\\S+)\\s+where"
+    reModuleName = regex [Multiline] "^module\\s+(\\S+)\\s+(\\S+\\s+)*where"
 
 -- |Decides the module name based on Agda source and potentially a file path.
 getModuleName :: Maybe FilePath -> T.Text -> String
