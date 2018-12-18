@@ -85,7 +85,7 @@ options =
 
 main :: IO ()
 main = do
-  (actions, _, _) <- getOpt Permute options <$> getArgs
+  (actions, userArgs, _) <- getOpt Permute options <$> getArgs
 
   opts <- foldl (>>=) (return defaultOptions) actions
   let Options { optInputAgda         = istreamAgda
@@ -100,14 +100,14 @@ main = do
 
   let (istreamAgda', maybeInputFile) = maybeReadInput istreamAgda
   agdaSource <- istreamAgda'
-  htmlSource <- fromMaybe (Lib.callAgdaToHTML verbose useJekyll maybeInputFile agdaSource) istreamHTML
+  htmlSource <- fromMaybe (Lib.callAgdaToHTML verbose userArgs useJekyll maybeInputFile agdaSource) istreamHTML
 
   let
     rawTextBlocks = Lib.text agdaSource
     codeBlocks = map (linkToAgdaStdlib . stripImplicitArgs) (Lib.code (isJust useJekyll) htmlSource)
 
-  textBlocks <- (if optLocalRefSugar opts then mapM (Lib.postProcess useJekyll maybeInputFile) rawTextBlocks
-                                          else return rawTextBlocks)
+  textBlocks <- (if localRefSugar then mapM (Lib.postProcess useJekyll maybeInputFile) rawTextBlocks
+                                  else return rawTextBlocks)
 
   ostream $ T.concat $ blend [textBlocks, codeBlocks]
 

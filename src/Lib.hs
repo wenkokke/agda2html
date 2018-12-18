@@ -45,7 +45,7 @@ postProcess useJekyll maybeInputFile agdaSource =
   let moduleName = getModuleName maybeInputFile agdaSource
       modulePath = init (splitOn "." moduleName)
   -- Resolve the input file and the include path
-  (inputFile, includePath) <-
+  (_, includePath) <-
     case maybeInputFile of
         -- If we've been given an input file, then we subtract the module names
         -- from the directories e.g., if we have been given src/Hello/World.lagda,
@@ -83,8 +83,8 @@ postProcess useJekyll maybeInputFile agdaSource =
 
 -- |Creates a temporary directory, calls `agda --html`, and generates the HTML
 --  output in the temporary directory.
-callAgdaToHTML :: Bool -> Maybe FilePath -> Maybe FilePath -> T.Text -> IO T.Text
-callAgdaToHTML verbose useJekyll maybeInputFile agdaSource =
+callAgdaToHTML :: Bool -> [String] -> Maybe FilePath -> Maybe FilePath -> T.Text -> IO T.Text
+callAgdaToHTML verbose userArgs useJekyll maybeInputFile agdaSource =
   withSystemTempDirectory "agda2html" $ \tempDir -> do
 
     -- We extract the module name and the module path from the Agda source.
@@ -128,8 +128,11 @@ callAgdaToHTML verbose useJekyll maybeInputFile agdaSource =
     let cmdArgs = [ "--allow-unsolved-metas"
                   , "--html"
                   , "--html-dir=" ++ tempDir
-                  , "--include-path=" ++ includePath
-                  , inputFile ]
+                  , "--include-path=" ++ includePath ]
+                  ++
+                  userArgs
+                  ++
+                  [ inputFile ]
 
     putStrLn $ showCommandForUser cmdName cmdArgs
 
