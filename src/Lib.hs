@@ -39,39 +39,9 @@ getModuleName maybeInputFile agdaSource =
       if baseName == last (splitOn "." moduleName) then moduleName else baseName
 
 -- | Applied to all text after other operations have finished
-postProcess :: Maybe FilePath -> Maybe FilePath -> T.Text -> IO T.Text
-postProcess useJekyll maybeInputFile agdaSource =
+postProcess :: Maybe FilePath -> Maybe FilePath -> (FilePath,FilePath) -> T.Text -> IO T.Text 
+postProcess useJekyll maybeInputFile (_,includePath) agdaSource =
   withSystemTempDirectory "agda2html" $ \tempDir -> do
-  let moduleName = getModuleName maybeInputFile agdaSource
-      modulePath = init (splitOn "." moduleName)
-  -- Resolve the input file and the include path
-  (_, includePath) <-
-    case maybeInputFile of
-        -- If we've been given an input file, then we subtract the module names
-        -- from the directories e.g., if we have been given src/Hello/World.lagda,
-        -- which defines the module Hello.World, then we return ["src/"]
-        Just inputFile -> do
-          absInputFile <- makeAbsolute inputFile
-          let
-            absInputPath = takeDirectory absInputFile
-            directories  = splitDirectories absInputPath
-            includePath  = joinPath <$> stripSuffix directories modulePath
-          -- note: if stripSuffix returns Nothing, this indicates a mismatch
-          -- between the module names and the directory names; in this case,
-          -- we will simply pass the inputPath as our include path, and
-          -- forward Agda's error message to the user
-          return (absInputFile, fromMaybe absInputPath includePath)
-
-                  -- If we've been given no input file, then we write the Agda source to a
-        -- file called <Module>.lagda in the temporary directory, and return the
-        -- path to that file, plus an empty include path.
-        Nothing -> do
-          let inputPath = tempDir </> joinPath modulePath
-          let inputFile = inputPath </> moduleName <.> "lagda"
-          createDirectoryIfMissing True inputPath
-          T.writeFile inputFile agdaSource
-          return (inputFile, tempDir)
-
   case useJekyll of
     Just jekyllRoot -> do
       localFiles <- agdaFilesIn includePath
@@ -81,51 +51,50 @@ postProcess useJekyll maybeInputFile agdaSource =
     Nothing ->
       return agdaSource
 
--- |Creates a temporary directory, calls `agda --html`, and generates the HTML
---  output in the temporary directory.
-callAgdaToHTML :: Bool -> [String] -> Maybe FilePath -> Maybe FilePath -> T.Text -> IO T.Text
-callAgdaToHTML verbose userArgs useJekyll maybeInputFile agdaSource =
+getFileContext :: Maybe FilePath -> T.Text -> IO (FilePath, FilePath)
+getFileContext maybeInputFile agdaSource =
   withSystemTempDirectory "agda2html" $ \tempDir -> do
-
-    -- We extract the module name and the module path from the Agda source.
-    let
-      moduleName = getModuleName maybeInputFile agdaSource
-      modulePath = init (splitOn "." moduleName)
+    let moduleName = getModuleName maybeInputFile agdaSource
+        modulePath = init (splitOn "." moduleName)
 
     -- Resolve the input file and the include path
-    (inputFile, includePath) <-
-      case maybeInputFile of
+    case maybeInputFile of
         -- If we've been given an input file, then we subtract the module names
         -- from the directories e.g., if we have been given src/Hello/World.lagda,
         -- which defines the module Hello.World, then we return ["src/"]
-        Just inputFile -> do
-          absInputFile <- makeAbsolute inputFile
-          let
-            absInputPath = takeDirectory absInputFile
-            directories  = splitDirectories absInputPath
-            includePath  = joinPath <$> stripSuffix directories modulePath
+      Just inputFile -> do
+         absInputFile <- makeAbsolute inputFile
+         let absInputPath = takeDirectory absInputFile
+             directories  = splitDirectories absInputPath
+             includePath  = joinPath <$> stripSuffix directories modulePath
           -- note: if stripSuffix returns Nothing, this indicates a mismatch
           -- between the module names and the directory names; in this case,
           -- we will simply pass the inputPath as our include path, and
           -- forward Agda's error message to the user
-          return (absInputFile, fromMaybe absInputPath includePath)
+         return (absInputFile, fromMaybe absInputPath includePath)
 
         -- If we've been given no input file, then we write the Agda source to a
         -- file called <Module>.lagda in the temporary directory, and return the
         -- path to that file, plus an empty include path.
-        Nothing -> do
-          let inputPath = tempDir </> joinPath modulePath
-          let inputFile = inputPath </> moduleName <.> "lagda"
-          createDirectoryIfMissing True inputPath
-          T.writeFile inputFile agdaSource
-          return (inputFile, tempDir)
+      Nothing -> do
+        let inputPath = tempDir </> joinPath modulePath
+            inputFile = inputPath </> moduleName <.> "lagda"
+        createDirectoryIfMissing True inputPath
+        T.writeFile inputFile agdaSource
+        return (inputFile, tempDir)
 
-    let outputFile = tempDir </> moduleName <.> "html"
-
+-- |Creates a temporary directory, calls `agda --html`, and generates the HTML
+--  output in the temporary directory.
+callAgdaToHTML :: Bool -> [String] -> Maybe FilePath -> Maybe FilePath -> T.Text -> (FilePath,FilePath) -> IO T.Text
+callAgdaToHTML verbose userArgs useJekyll maybeInputFile agdaSource (inputFile,includePath) =
+  withSystemTempDirectory "agda2html" $ \tempDir -> do
+    let moduleName = getModuleName maybeInputFile agdaSource
+        modulePath = init (splitOn "." moduleName)
+        outputFile = tempDir </> moduleName <.> "html"
     -- Call agda --html:
-    let stdOutAndErr = if verbose then UseHandle stderr else CreatePipe
-    let cmdName = "agda"
-    let cmdArgs = [ "--allow-unsolved-metas"
+        stdOutAndErr = if verbose then UseHandle stderr else CreatePipe
+        cmdName = "agda"
+        cmdArgs = [ "--allow-unsolved-metas"
                   , "--html"
                   , "--html-dir=" ++ tempDir
                   , "--include-path=" ++ includePath ]
