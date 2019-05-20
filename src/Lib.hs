@@ -12,7 +12,7 @@ import           Data.List.Split (splitOn)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import           Data.Text.ICU (Regex, MatchOption(..), regex, find, group)
-import           Data.Text.ICU.Replace (Replace, replaceAll)
+import           Data.Text.ICU.Replace (Replace, rtext, replaceAll)
 import           System.Directory (createDirectoryIfMissing, getCurrentDirectory, canonicalizePath)
 import           System.Directory.Tree (AnchoredDirTree(..), readDirectoryWith)
 import           System.IO (stderr)
@@ -261,11 +261,17 @@ liquidifyLocalHref jekyllRoot localModules agdaSource =
         replaceString = fromString $
           "\"{% endraw %}{{ site.baseurl }}{% link " <> jekyllRoot </> localFile <> ".md %}{% raw %}$2\""
 
+-- |Default URL for the Agda stdlib.
+defaultStdLibHref :: T.Text
+defaultStdLibHref = "https://agda.github.io/agda-stdlib/"
+
 -- |Correct references to the Agda stdlib.
-correctStdLibHref :: IO (T.Text -> T.Text)
-correctStdLibHref =
+correctStdLibHref :: T.Text -> IO (T.Text -> T.Text)
+correctStdLibHref stdLibHref =
   reStdlibHref >>= \re ->
-  return (replaceAll re "\"https://agda.github.io/agda-stdlib/$1.html$2\"")
+  return (replaceAll re ("\"" <> rtext (dropTrailingSlash stdLibHref) <> "/$1.html$2\""))
+  where
+    dropTrailingSlash url = fromMaybe url (T.stripSuffix "/" url)
 
 -- |An ICU regular expression which matches links to the Agda stdlib.
 reStdlibHref :: IO Regex
