@@ -102,13 +102,18 @@ main = do
 
   let (istreamAgda', maybeInputFile) = maybeReadInput istreamAgda
   agdaSource <- istreamAgda'
-  htmlSource <- fromMaybe (Lib.callAgdaToHTML verbose userArgs useJekyll maybeInputFile agdaSource) istreamHTML
+
+  fileContext <- Lib.getFileContext maybeInputFile agdaSource
+  
+  htmlSource <- fromMaybe (Lib.callAgdaToHTML verbose userArgs useJekyll maybeInputFile agdaSource fileContext) istreamHTML
 
   let
     rawTextBlocks = Lib.text agdaSource
     codeBlocks = map (linkToAgdaStdlib . stripImplicitArgs) (Lib.code (isJust useJekyll) htmlSource)
 
-  textBlocks <- (if localRefSugar then mapM (Lib.postProcess useJekyll maybeInputFile) rawTextBlocks
+
+  
+  textBlocks <- (if localRefSugar then mapM (Lib.postProcess useJekyll maybeInputFile fileContext) rawTextBlocks
                                   else return rawTextBlocks)
 
   ostream $ T.concat $ blend [textBlocks, codeBlocks]
