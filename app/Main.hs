@@ -4,6 +4,7 @@ module Main where
 import qualified Lib
 import           Data.List (transpose)
 import           Data.Maybe (fromMaybe, isJust)
+import           Data.String (fromString)
 import qualified Data.Text as T
 import qualified Data.Text.IO as T
 import           Data.Version (showVersion)
@@ -59,9 +60,10 @@ options =
     (NoArg (\opt -> return opt { optStripImplicitArgs = Lib.removeImplicit }))
     "Strip implicit arguments."
   , Option [] ["link-to-agda-stdlib"]
-    (NoArg (\opt -> do
-               f <- Lib.correctStdLibHref
-               return opt { optLinkToAgdaStdlib = f }))
+    (OptArg (\arg opt -> do
+               f <- Lib.correctStdLibHref (fromMaybe Lib.defaultStdLibHref (fromString <$> arg))
+               return opt { optLinkToAgdaStdlib = f })
+            "AGDA_STDLIB_BASEURL")
     "Fix links to the Agda stdlib."
   , Option "" ["link-to-local-agda-names"]
     (NoArg (\opt -> return opt { optLocalRefSugar = True }))
