@@ -125,8 +125,7 @@ callAgdaToHTML verbose userArgs useJekyll maybeInputFile agdaSource =
     -- Call agda --html:
     let stdOutAndErr = if verbose then UseHandle stderr else CreatePipe
     let cmdName = "agda"
-    let cmdArgs = [ "--allow-unsolved-metas"
-                  , "--html"
+    let cmdArgs = [ "--html"
                   , "--html-dir=" ++ tempDir
                   , "--include-path=" ++ includePath ]
                   ++
