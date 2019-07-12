@@ -1,4 +1,4 @@
-# `agda2html`
+# agda2html
 
 ```
 deprecated: use `agda --html-highlight=code` instead (last compatible version is Agda 2.5.4.2)
